@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-import unittest
+#import unittest
 from Core.Color import Color
 
 
@@ -23,9 +23,23 @@ class Fuentes():
                 imagen = cv2.cvtColor(imagen, cv2.COLOR_BGR2BGRA)
         return imagen
 
+    def generar_background(self, ancho, alto, color):
+        imagen = np.full((alto, ancho, 4), color, dtype=np.uint8)
+        return imagen
+    
+    def combinar_con_fondo(self, seccion, fondo):
+        fondo_actual = fondo
+
+        for i in range(seccion.shape[0]):
+            for j in range(seccion.shape[1]):
+                if seccion[i, j][3] != 0 :
+                    fondo_actual[i, j] = seccion[i, j]
+
+        return fondo_actual
+
     def seleccionar_area(self):
         seccion = self.imagen[self.area.yInicial:self.area.yInicial + self.area.alto, self.area.xInicial:self.area.xInicial + self.area.ancho]
-        seccion = self.refinar_seccion(seccion, 0, )
+        seccion = self.refinar_seccion(seccion, 0, (255, 255, 255, 255))
         return seccion
 
     def refinar_por_color(self, seccion, color_fondo):
@@ -69,7 +83,7 @@ class Fuentes():
             case 0:
                 seccion = self.refinar_por_color(seccion, parametro)
             case 1:
-                seccion = self.refinar_por_borde(seccion, parametro)
+                seccion = self.refinar_por_bordes(seccion, parametro)
             case 2:
                 seccion = self.refinar_por_mascara(seccion, parametro)
         return seccion
@@ -81,17 +95,29 @@ class Fuentes():
         dx = (self.posicion_final.posX - self.posicion_inicial.posX) / (self.numero_imagenes - 1)
         dy = (self.posicion_final.posY - self.posicion_inicial.posY) / (self.numero_imagenes - 1)
 
-        for i in range(self.numero_imagenes):
-            imagen_modificada = self.imagen.copy()
+        imagen_with_no_object = self.imagen.copy()
+        ancho_background_inicial = 120
+        alto_background_inicial = 120
 
+        if imagen_with_no_object.shape[2] == 3:
+                imagen_with_no_object = cv2.cvtColor(imagen_with_no_object, cv2.COLOR_BGR2BGRA)
+        background_image = self.generar_background(ancho_background_inicial, alto_background_inicial, (255, 255, 255, 255)) # genera un bg de color blanco
+
+        pos_inicial_x = int(self.posicion_inicial.posX)
+        pos_inicial_y = int(self.posicion_inicial.posY)
+
+        imagen_with_no_object[pos_inicial_y:pos_inicial_y + ancho_background_inicial,
+            pos_inicial_x:pos_inicial_x + alto_background_inicial, :] = background_image
+        
+        seccion_desplazada = self.seleccionar_area()
+
+        for i in range(self.numero_imagenes):
+            imagen_modificada = imagen_with_no_object.copy()
             if imagen_modificada.shape[2] == 3:
                 imagen_modificada = cv2.cvtColor(imagen_modificada, cv2.COLOR_BGR2BGRA)
 
             nueva_posicion_x = int(self.posicion_inicial.posX + dx * i)
             nueva_posicion_y = int(self.posicion_inicial.posY + dy * i)
-
-            seccion_desplazada = self.seleccionar_area()
-            print(seccion_desplazada)
 
             # Calcular el área efectiva de la sección desplazada que puede ser insertada
             alto_efectivo = min(seccion_desplazada.shape[0], imagen_modificada.shape[0] - nueva_posicion_y)
@@ -103,10 +129,15 @@ class Fuentes():
 
             seccion_para_insertar = seccion_desplazada[:alto_efectivo, :ancho_efectivo, :]
 
+            fondo_actual = imagen_modificada[nueva_posicion_y:nueva_posicion_y + alto_efectivo,
+            nueva_posicion_x:nueva_posicion_x + ancho_efectivo, :]
+
+            combinado = self.combinar_con_fondo(seccion_para_insertar, fondo_actual)
+
             # Insertar la sección en la imagen modificada
             imagen_modificada[nueva_posicion_y:nueva_posicion_y + alto_efectivo,
-            nueva_posicion_x:nueva_posicion_x + ancho_efectivo, :] = seccion_para_insertar
+            nueva_posicion_x:nueva_posicion_x + ancho_efectivo, :] = combinado
 
-            cv2.imwrite(f'imagen_desplazada_{i + 1:02d}.png', imagen_modificada)
+            cv2.imwrite(f'out/imagen_desplazada_{i + 1:02d}.png', imagen_modificada)
 
 
